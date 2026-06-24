@@ -28,7 +28,9 @@ class _DebtCalculatorState extends State<DebtCalculator> {
   final debtController = TextEditingController();
   final percentController = TextEditingController();
   final dateController = TextEditingController();
+  final predDateController = TextEditingController();
   DateTime? selectedDate;
+  DateTime? selectedPredictedDate;
   String result = '';
 
   /// Открывает диалог выбора даты и записывает её в поле
@@ -46,6 +48,22 @@ class _DebtCalculatorState extends State<DebtCalculator> {
             '${picked.day.toString().padLeft(2, '0')}.'
             '${picked.month.toString().padLeft(2, '0')}.'
             '${picked.year}';
+      });
+    }
+  }
+
+  Future<void> _pickPredDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000), lastDate: DateTime(2100));
+    if (picked != null)
+    {
+      setState(() {
+        selectedPredictedDate = picked;
+        predDateController.text =
+          '${picked.day.toString().padLeft(2, '0')}.'
+          '${picked.month.toString().padLeft(2, '0')}.'
+          '${picked.year}';
       });
     }
   }
@@ -70,15 +88,31 @@ class _DebtCalculatorState extends State<DebtCalculator> {
 
     final today = DateTime.now();
     final start = selectedDate!;
+    final predEnd = selectedPredictedDate!;
     if (start.isAfter(today)) {
       setState(() => result = 'Дата взятия долга не может быть в будущем');
       return;
     }
 
-    final days = today.difference(start).inDays;
+    if (predEnd.isAfter(today))
+    {
+      setState(() {
+        result = 'Еще не время отдавать долг, процентов нет';
+        
+      });
+      return;
+    }
+
+    if (predEnd.isBefore(start))
+    {
+      setState(() => result = 'Вы не можете отдать долг до того как его взяли!');
+      return;
+    }
+
+    final days = today.difference(predEnd).inDays;
     if (days == 0) {
       setState(() {
-        result = 'Сегодня долг взят, пеней нет.\n'
+        result = 'пеней нет.\n'
             'Сумма долга: ${debt.toStringAsFixed(2)}';
       });
       return;
@@ -90,7 +124,7 @@ class _DebtCalculatorState extends State<DebtCalculator> {
     final penalty = total - debt;
 
     setState(() {
-      result = 'Прошло дней: $days\n'
+      result = 'Просроченно дней: $days\n'
           'Итоговая сумма долга: ${total.toStringAsFixed(2)}\n'
           'Начисленные пени: ${penalty.toStringAsFixed(2)}';
     });
@@ -101,6 +135,7 @@ class _DebtCalculatorState extends State<DebtCalculator> {
     debtController.dispose();
     percentController.dispose();
     dateController.dispose();
+    predDateController.dispose();
     super.dispose();
   }
 
@@ -130,6 +165,15 @@ class _DebtCalculatorState extends State<DebtCalculator> {
               onTap: _pickDate,
               decoration: const InputDecoration(
                 labelText: 'Дата взятия долга',
+                suffixIcon: Icon(Icons.calendar_today),
+              ),
+            ),
+            TextField(
+              controller: predDateController,
+              readOnly: true,
+              onTap: _pickPredDate,
+              decoration: const InputDecoration(
+                labelText: "Предположительная дата отдачи долга",
                 suffixIcon: Icon(Icons.calendar_today),
               ),
             ),
