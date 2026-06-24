@@ -29,11 +29,23 @@ class _DebtCalculatorState extends State<DebtCalculator> {
   final percentController = TextEditingController();
   final dateController = TextEditingController();
   final predDateController = TextEditingController();
+  final nameController = TextEditingController();      // новое поле
+  final reasonController = TextEditingController();    // новое поле
+
   DateTime? selectedDate;
   DateTime? selectedPredictedDate;
   String result = '';
 
-  /// Открывает диалог выбора даты и записывает её в поле
+  /// Вспомогательный метод: добавляет к сообщению имя и причину, если они заполнены
+  String _buildResult(String message) {
+    final name = nameController.text.trim();
+    final reason = reasonController.text.trim();
+    String prefix = '';
+    if (name.isNotEmpty) prefix += 'Должник: $name\n';
+    if (reason.isNotEmpty) prefix += 'Причина: $reason\n';
+    return '$prefix$message';
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -55,78 +67,81 @@ class _DebtCalculatorState extends State<DebtCalculator> {
   Future<void> _pickPredDate() async {
     final picked = await showDatePicker(
       context: context,
-      firstDate: DateTime(2000), lastDate: DateTime(2100));
-    if (picked != null)
-    {
+      initialDate: selectedPredictedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
       setState(() {
         selectedPredictedDate = picked;
         predDateController.text =
-          '${picked.day.toString().padLeft(2, '0')}.'
-          '${picked.month.toString().padLeft(2, '0')}.'
-          '${picked.year}';
+            '${picked.day.toString().padLeft(2, '0')}.'
+            '${picked.month.toString().padLeft(2, '0')}.'
+            '${picked.year}';
       });
     }
   }
 
-  /// Основная логика расчёта сложного процента
   void _calculate() {
-    // Подготовка чисел (разрешены и точка, и запятая)
     final debtText = debtController.text.replaceAll(',', '.');
     final percentText = percentController.text.replaceAll(',', '.');
 
     if (debtText.isEmpty || percentText.isEmpty || selectedDate == null) {
-      setState(() => result = 'Заполните все поля');
+      setState(() => result = _buildResult('Заполните все обязательные поля'));
       return;
     }
 
     final debt = double.tryParse(debtText);
     final percent = double.tryParse(percentText);
     if (debt == null || percent == null || debt < 0 || percent < 0) {
-      setState(() => result = 'Введите корректные числа');
+      setState(() => result = _buildResult('Введите корректные числа'));
       return;
     }
 
     final today = DateTime.now();
     final start = selectedDate!;
-    final predEnd = selectedPredictedDate!;
+    final predEnd = selectedPredictedDate;
+
     if (start.isAfter(today)) {
-      setState(() => result = 'Дата взятия долга не может быть в будущем');
+      setState(() => result = _buildResult('Дата взятия долга не может быть в будущем'));
       return;
     }
 
-    if (predEnd.isAfter(today))
-    {
-      setState(() {
-        result = 'Еще не время отдавать долг, процентов нет';
-        
-      });
+    if (predEnd == null) {
+      setState(() => result = _buildResult('Выберите предполагаемую дату отдачи долга'));
       return;
     }
 
-    if (predEnd.isBefore(start))
-    {
-      setState(() => result = 'Вы не можете отдать долг до того как его взяли!');
+    if (predEnd.isAfter(today)) {
+      setState(() => result = _buildResult('Ещё не время отдавать долг, процентов нет'));
+      return;
+    }
+
+    if (predEnd.isBefore(start)) {
+      setState(() => result = _buildResult('Вы не можете отдать долг до того, как его взяли!'));
       return;
     }
 
     final days = today.difference(predEnd).inDays;
     if (days == 0) {
       setState(() {
-        result = 'пеней нет.\n'
-            'Сумма долга: ${debt.toStringAsFixed(2)}';
+        result = _buildResult(
+          'Пеней нет.\nСумма долга: ${debt.toStringAsFixed(2)}',
+        );
       });
       return;
     }
 
-    // Сложный процент: каждый день сумма увеличивается на процент от текущей суммы
     final rate = percent / 100.0;
     final total = debt * pow(1 + rate, days);
     final penalty = total - debt;
 
     setState(() {
-      result = 'Просроченно дней: $days\n'
-          'Итоговая сумма долга: ${total.toStringAsFixed(2)}\n'
-          'Начисленные пени: ${penalty.toStringAsFixed(2)}';
+      result = _buildResult(
+        'Просрочено дней: $days\n'
+        'Итоговая сумма долга: ${total.toStringAsFixed(2)}\n'
+        'Начисленные пени: ${penalty.toStringAsFixed(2)}',
+      );
     });
   }
 
@@ -136,6 +151,8 @@ class _DebtCalculatorState extends State<DebtCalculator> {
     percentController.dispose();
     dateController.dispose();
     predDateController.dispose();
+    nameController.dispose();
+    reasonController.dispose();
     super.dispose();
   }
 
@@ -147,6 +164,17 @@ class _DebtCalculatorState extends State<DebtCalculator> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            // Новые поля: имя должника и причина долга
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Имя должника'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(labelText: 'Причина долга'),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: debtController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -168,12 +196,13 @@ class _DebtCalculatorState extends State<DebtCalculator> {
                 suffixIcon: Icon(Icons.calendar_today),
               ),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: predDateController,
               readOnly: true,
               onTap: _pickPredDate,
               decoration: const InputDecoration(
-                labelText: "Предположительная дата отдачи долга",
+                labelText: 'Предположительная дата отдачи долга',
                 suffixIcon: Icon(Icons.calendar_today),
               ),
             ),
